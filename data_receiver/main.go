@@ -4,16 +4,13 @@ import (
     "fmt"
     "net/http"
     "log"
-    "encoding/json"
 
-    "github.com/confluentinc/confluent-kafka-go/kafka"
-   // "github.com/confluentinc/confluent-kafka-go/v2/kafka" 
+    //"github.com/confluentinc/confluent-kafka-go/kafka"
     "github.com/emmanueluwa/tolling/types"
     "github.com/gorilla/websocket"
 )
 
 
-var kafkaTopic  = "obudata"
 
 
 func main() {
@@ -31,29 +28,23 @@ func main() {
 type DataReceiver struct {
     msgch chan types.OBUData
     conn *websocket.Conn
-    prod *kafka.Producer
+    prod DataProducer
 }
 
 
 func NewDataReceiver() (*DataReceiver, error) {
-    p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": "localhost"})
+    var (
+        p DataProducer
+        err error
+        kafkaTopic = "obudata"
+    )
+
+    p, err = NewKafkaProducer(kafkaTopic)
     if err != nil {
         return nil, err
     }
 
-    //stat another goroutine to check if we have delivered the data.
-    go func() {
-        for e := range p.Events() {
-            switch ev := e.(type) {
-            case *kafka.Message:
-                if ev.TopicPartition.Error != nil {
-                    fmt.Printf("Delivery failed: %v\n", ev.TopicPartition)
-                } else {
-                    fmt.Printf("Delivered message to %v\n", ev.TopicPartition)
-                }
-            }
-        }
-    }()
+    p = NewLogMiddleware(p)
 
     return &DataReceiver{
         msgch: make(chan types.OBUData, 128),
@@ -63,19 +54,7 @@ func NewDataReceiver() (*DataReceiver, error) {
 
 
 func (dr *DataReceiver) produceData(data types.OBUData) error {
-    b, err := json.Marshal(data)
-    if err != nil {
-        return err
-    }
-
-    err = dr.prod.Produce(&kafka.Message{
-        TopicPartition: kafka.TopicPartition{
-            Topic: &kafkaTopic, 
-            Partition: kafka.PartitionAny,
-        },
-        Value: b,
-    }, nil)
-    return err
+    return dr.prod.ProduceData(data)
 }
 
 
@@ -107,8 +86,6 @@ func (dr *DataReceiver) wsReceiveLoop() {
            continue
        }
     
-       fmt.Println("receieved message", data)
-
        if err := dr.produceData(data); err != nil {
             fmt.Println("kafka produce error:", err)
        }
