@@ -13,12 +13,13 @@ func main() {
     listenAddr := flag.String("listenAddr", ":3000", "the listen address of the HTTP server")
     flag.Parse()
     
-    store := NewMemoryStore()
 
     var (
+        store = NewMemoryStore()
         svc = NewInvoiceAggregator(store)
     )
 
+    svc = NewLogMiddleware(svc)
     makeHTTPTransport(*listenAddr, svc)
 }
 

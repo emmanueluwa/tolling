@@ -15,4 +15,4 @@ agg:
 	@./bin/agg
 
 
-.PHONY: obu, invoicer
+.PHONY: obu invoicer
